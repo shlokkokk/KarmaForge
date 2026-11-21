@@ -25,10 +25,20 @@ def curl_request(
 ) -> Tuple[int, str]:
     """Executes an HTTP request via system curl to preserve modern TLS/HTTP2 fingerprints."""
     curl_bin = "curl.exe" if os.name == "nt" else "curl"
-    cmd = [curl_bin, "-s", "-A", USER_AGENT_BROWSER]
+    cmd = [
+        curl_bin, "-s", "-L", "--compressed",
+        "-A", USER_AGENT_BROWSER,
+        "-H", "Accept: text/html,application/xhtml+xml,application/xml;q=0.9,application/json,*/*;q=0.8",
+        "-H", "Accept-Language: en-US,en;q=0.9",
+        "-H", "Sec-Fetch-Dest: document",
+        "-H", "Sec-Fetch-Mode: navigate",
+        "-H", "Sec-Fetch-Site: none",
+        "-H", "Upgrade-Insecure-Requests: 1"
+    ]
 
     if session_cookie:
-        cmd.extend(["-b", f"reddit_session={session_cookie}"])
+        clean_cookie = session_cookie.replace("\r", "").replace("\n", "").strip('"').strip("'").strip()
+        cmd.extend(["-b", f"reddit_session={clean_cookie}"])
 
     if method == "POST":
         cmd.extend(["-X", "POST"])
@@ -74,10 +84,16 @@ class RedditSessionCookieClient:
             if not stdout:
                 return False, "Empty response from Reddit.", {}
 
-            data = json.loads(stdout).get("data", {})
+            try:
+                data = json.loads(stdout).get("data", {})
+            except Exception as je:
+                preview = stdout[:250].replace("\n", " ").replace("\r", "")
+                return False, f"JSON parse error ({je}): Status {status}, Body: {preview}", {}
+
             real_username = data.get("name")
             if not real_username:
-                return False, "Invalid or expired session cookie.", {}
+                preview = stdout[:250].replace("\n", " ").replace("\r", "")
+                return False, f"Invalid or expired session cookie. Body: {preview}", {}
 
             self.modhash = data.get("modhash", "")
             self.comment_karma = data.get("comment_karma", 0)

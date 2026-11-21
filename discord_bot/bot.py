@@ -20,6 +20,51 @@ from core.db import (
     get_active_comments
 )
 
+class AITelemetrySession:
+    """Manages a single live-edited telemetry card in #ai-keypool-telemetry for a comment generation run."""
+
+    def __init__(self, bot: Any, subreddit: str, post_title: str):
+        self.bot = bot
+        self.subreddit = subreddit
+        self.post_title = post_title
+        self.message: Optional[discord.Message] = None
+        self.steps: List[str] = []
+        self.start_time = time.time()
+
+    async def update(self, status: str, detail: str, is_final: bool = False, success: bool = True, output_preview: str = ""):
+        chan = self.bot.router.get_channel("ai_brain")
+        if not chan:
+            return
+
+        elapsed = time.time() - self.start_time
+        if detail:
+            self.steps.append(detail)
+
+        steps_text = "\n".join(self.steps) if self.steps else "Evaluating keypool..."
+
+        if is_final:
+            color = 0x2ECC71 if success else 0xE74C3C
+            status_title = f"AI Telemetry: Generation Resolved ({elapsed:.1f}s)" if success else f"AI Telemetry: All Tiers Exhausted ({elapsed:.1f}s)"
+        else:
+            color = 0xF1C40F if len(self.steps) > 1 else 0x3498DB
+            status_title = f"AI Telemetry: Keypool Progression ({elapsed:.1f}s)"
+
+        embed = discord.Embed(title=status_title, color=color)
+        embed.add_field(name="Target Context", value=f"**r/{self.subreddit}** • {self.post_title[:80]}", inline=False)
+        embed.add_field(name="Ladder Progression", value=f"```{steps_text[:900]}```", inline=False)
+
+        if output_preview:
+            embed.add_field(name="Crafted Comment", value=f"> \"{output_preview[:250]}\"", inline=False)
+
+        try:
+            if not self.message:
+                self.message = await chan.send(embed=embed)
+            else:
+                await self.message.edit(embed=embed)
+        except Exception as e:
+            print(f"  [AI Telemetry] Discord message update note: {e}")
+
+
 class KarmaForgeBot(commands.Bot):
     """Discord Bot controlling and monitoring KarmaForge operations."""
 
@@ -45,6 +90,13 @@ class KarmaForgeBot(commands.Bot):
 
     async def on_ready(self):
         print(f"\n[Discord] Connected as: {self.user.name} ({self.user.id})")
+        if self.operator:
+            self.operator.loop = self.loop
+            if hasattr(self.operator, "shield") and self.operator.shield:
+                self.operator.shield.loop = self.loop
+        if self.shield:
+            self.shield.loop = self.loop
+
         for guild in self.guilds:
             print(f"  [Discord] Initializing guild: {guild.name}")
             channels = await self.router.ensure_categories_and_channels(guild)
@@ -226,6 +278,12 @@ class KarmaForgeBot(commands.Bot):
             await chan.send(embed=embed)
 
     # Category 5: System Health & Telemetry Event Dispatchers
+    def create_ai_telemetry_session(self, subreddit: str, post_title: str) -> Optional[AITelemetrySession]:
+        chan = self.router.get_channel("ai_brain")
+        if not chan:
+            return None
+        return AITelemetrySession(bot=self, subreddit=subreddit, post_title=post_title)
+
     async def log_session_alert(self, username: str, status: str, details: str):
         chan = self.router.get_channel("sessions")
         if chan:

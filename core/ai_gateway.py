@@ -245,7 +245,8 @@ class AIGateway:
         prompt: str,
         system_prompt: str,
         enforce_lowercase: bool = True,
-        max_sentences: int = 2
+        max_sentences: int = 2,
+        telemetry_cb: Optional[Any] = None
     ) -> Optional[str]:
         """
         Executes CurioCut-Style Quality Ladder + Groq LPU Failover:
@@ -253,55 +254,83 @@ class AIGateway:
         2. Skips keys currently cooling down from rate limits.
         3. If all Gemini tiers are exhausted, drops to Groq LPU backup brain.
         4. Programmatically sanitizes output to guarantee zero AI artifacts.
+        5. Reports live step updates to Discord telemetry to edit a single message.
         """
         raw_output = None
         ladder = self.build_quality_ladder()
+        start_t = time.time()
 
         # Tier 1-3: Gemini Multi-Key Multi-Model Quality Ladder
         for key, model, label in ladder:
             if self.gemini_pool.is_cooling_down(key):
+                if telemetry_cb:
+                    telemetry_cb("skip", f"{label} is cooling down from rate limit. Skipping.")
                 continue
 
             try:
                 raw_output = self._call_gemini_direct(prompt, system_prompt, key, model)
                 if raw_output and len(raw_output) > 6:
-                    print(f"  [AI Gateway] Successfully generated with {label}.")
-                    break
+                    elapsed = time.time() - start_t
+                    print(f"  [AI Gateway] Successfully generated with {label} in {elapsed:.1f}s.")
+                    clean_comment = OutputSanitizer.sanitize(
+                        raw_output,
+                        enforce_lowercase=enforce_lowercase,
+                        max_sentences=max_sentences
+                    )
+                    if clean_comment and len(clean_comment) >= 5:
+                        if telemetry_cb:
+                            telemetry_cb("success", f"{label} -> 200 OK ({elapsed:.1f}s)", is_final=True, success=True, output_preview=clean_comment)
+                        return clean_comment
             except urllib.error.HTTPError as e:
                 if e.code in (429, 403, 401):
                     self.gemini_pool.mark_rate_limited(key)
+                    if telemetry_cb:
+                        telemetry_cb("retry", f"{label} -> Rate-Limited (HTTP {e.code}). Failing over to next tier...")
                     continue
                 elif e.code in (500, 502, 503, 504):
                     print(f"  [AI Gateway] Peak Google traffic ({e.code} on {label}). Fast-failing to next tier...")
+                    if telemetry_cb:
+                        telemetry_cb("retry", f"{label} -> Google Server Error ({e.code}). Failing over...")
                     continue
                 else:
                     print(f"  [AI Gateway] Gemini error ({label}): {e.code} {e.reason}")
+                    if telemetry_cb:
+                        telemetry_cb("retry", f"{label} -> HTTP {e.code}: {e.reason}")
             except (TimeoutError, urllib.error.URLError) as e:
                 print(f"  [AI Gateway] Timeout / network glitch ({label}). Fast-failing to next tier...")
+                if telemetry_cb:
+                    telemetry_cb("retry", f"{label} -> Request Timeout (>7s). Fast-failing...")
             except Exception as e:
                 print(f"  [AI Gateway] Gemini request failed ({label}): {e}")
+                if telemetry_cb:
+                    telemetry_cb("retry", f"{label} -> Error: {str(e)[:60]}")
 
         # Tier 4: Groq LPU Failover
         if not raw_output and self.groq_key:
             print("  [AI Gateway] Activating Groq LPU backup brain...")
+            if telemetry_cb:
+                telemetry_cb("failover", "All Gemini keys exhausted. Activating Groq LPU backup brain...")
             for model in self.groq_models:
                 try:
                     raw_output = self._call_groq_direct(prompt, system_prompt, model)
                     if raw_output and len(raw_output) > 6:
-                        print(f"  [AI Gateway] Successfully generated with Groq ({model}).")
-                        break
+                        elapsed = time.time() - start_t
+                        print(f"  [AI Gateway] Successfully generated with Groq ({model}) in {elapsed:.1f}s.")
+                        clean_comment = OutputSanitizer.sanitize(
+                            raw_output,
+                            enforce_lowercase=enforce_lowercase,
+                            max_sentences=max_sentences
+                        )
+                        if clean_comment and len(clean_comment) >= 5:
+                            if telemetry_cb:
+                                telemetry_cb("success", f"Groq LPU ({model}) -> 200 OK ({elapsed:.1f}s)", is_final=True, success=True, output_preview=clean_comment)
+                            return clean_comment
                 except Exception as e:
                     print(f"  [AI Gateway] Groq error ({model}): {e}")
+                    if telemetry_cb:
+                        telemetry_cb("retry", f"Groq LPU ({model}) -> Error: {str(e)[:60]}")
 
-        if not raw_output:
-            print("  [AI Gateway] Warning: All AI tiers failed to produce output.")
-            return None
-
-        # Clean and sanitize strictly
-        clean_comment = OutputSanitizer.sanitize(
-            raw_output,
-            enforce_lowercase=enforce_lowercase,
-            max_sentences=max_sentences
-        )
-
-        return clean_comment if len(clean_comment) >= 5 else None
+        print("  [AI Gateway] Warning: All AI tiers failed to produce output.")
+        if telemetry_cb:
+            telemetry_cb("exhausted", "All AI tiers failed to produce output.", is_final=True, success=False)
+        return None

@@ -22,6 +22,16 @@ class DownvoteShield:
         self.loop: Optional[asyncio.AbstractEventLoop] = None
         self.milestone_tiers = [10, 25, 50, 100, 250, 500]
 
+    def _sync_dispatch(self, coro):
+        loop = getattr(self.discord_bot, "loop", None) or self.loop
+        if self.discord_bot and loop and loop.is_running():
+            asyncio.run_coroutine_threadsafe(coro, loop)
+        else:
+            try:
+                coro.close()
+            except Exception:
+                pass
+
     def run_check_cycle(self) -> Dict[str, Any]:
         """Runs one full inspection cycle across all active comments."""
         active_comments = get_active_comments(window_hours=self.window_hours)
@@ -56,16 +66,14 @@ class DownvoteShield:
                 for milestone in self.milestone_tiers:
                     if old_score < milestone and score >= milestone:
                         stats["milestones"] += 1
-                        if self.discord_bot and self.loop:
-                            asyncio.run_coroutine_threadsafe(
-                                self.discord_bot.log_milestone(
-                                    username=username,
-                                    comment_text=row["comment_text"],
-                                    score=score,
-                                    post_url=row["post_url"]
-                                ),
-                                self.loop
+                        self._sync_dispatch(
+                            self.discord_bot.log_milestone(
+                                username=username,
+                                comment_text=row["comment_text"],
+                                score=score,
+                                post_url=row["post_url"]
                             )
+                        )
                         break
 
                 # Negative score & downvote shield execution
@@ -76,17 +84,15 @@ class DownvoteShield:
                             stats["deleted"] += 1
                             update_comment_score(cid, score, deleted=True)
                             print(f"  [Shield] Comment {cid} (score {score}) by /u/{username} AUTO-DELETED.")
-                            if self.discord_bot and self.loop:
-                                asyncio.run_coroutine_threadsafe(
-                                    self.discord_bot.log_auto_deletion(
-                                        username=username,
-                                        comment_id=cid,
-                                        score=score,
-                                        comment_text=row["comment_text"],
-                                        post_url=row["post_url"]
-                                    ),
-                                    self.loop
+                            self._sync_dispatch(
+                                self.discord_bot.log_auto_deletion(
+                                    username=username,
+                                    comment_id=cid,
+                                    score=score,
+                                    comment_text=row["comment_text"],
+                                    post_url=row["post_url"]
                                 )
+                            )
                             continue
 
                 elif score <= self.alert_threshold and old_score > self.alert_threshold:

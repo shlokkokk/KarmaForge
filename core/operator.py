@@ -45,8 +45,14 @@ class AutonomousOperator:
         self.next_cycle_at: float = time.time() + random.uniform(self.min_delay, self.max_delay)
 
     def _sync_dispatch(self, coro):
-        if self.discord_bot and self.loop and self.loop.is_running():
-            asyncio.run_coroutine_threadsafe(coro, self.loop)
+        loop = getattr(self.discord_bot, "loop", None) or self.loop
+        if self.discord_bot and loop and loop.is_running():
+            asyncio.run_coroutine_threadsafe(coro, loop)
+        else:
+            try:
+                coro.close()
+            except Exception:
+                pass
 
     def is_in_circadian_rest(self) -> bool:
         if not self.sleep_cfg.get("enabled", True):
@@ -61,10 +67,10 @@ class AutonomousOperator:
             return current_m >= start_m or current_m < end_m
         return start_m <= current_m < end_m
 
-    def execute_account_turn(self, session: Any) -> bool:
+    def execute_account_turn(self, session: Any) -> Tuple[bool, str]:
         if self.paused:
             print(f"  [{session.username}] Engine is currently PAUSED via Control Panel.")
-            return False
+            return False, "Engine is paused via Control Panel."
 
         username = session.username
 
@@ -79,18 +85,18 @@ class AutonomousOperator:
                     details=f"The browser session cookie for /u/{username} is invalid or expired ({msg}). Update .env and run status check."
                 )
             )
-            return False
+            return False, f"Session error: {msg}"
 
         daily_count = get_daily_comment_count(username)
         if daily_count >= self.daily_limit:
             print(f"  [{username}] Daily quota reached ({daily_count}/{self.daily_limit}). Resting.")
-            return False
+            return False, f"Daily quota reached ({daily_count}/{self.daily_limit})."
 
         if session.is_on_cooldown():
             rem = session.get_remaining_cooldown()
             print(f"  [{username}] On cooldown ({rem}s remaining). Skipping turn.")
             self._sync_dispatch(self.discord_bot.log_ratelimit(username, rem))
-            return False
+            return False, f"On Reddit cooldown ({rem}s remaining)."
 
         all_subs = []
         for cat_subs in self.subreddits_cfg.values():
@@ -119,7 +125,7 @@ class AutonomousOperator:
 
         if not candidates:
             print(f"  [{username}] No qualifying rising threads found right now. Will scan on next cycle.")
-            return False
+            return False, "No qualifying rising threads found right now."
 
         target = candidates[0]
         sub_name = target["subreddit"]
@@ -134,16 +140,30 @@ class AutonomousOperator:
             subreddit=sub_name
         )
 
+        loop = getattr(self.discord_bot, "loop", None) or self.loop
+        telemetry_cb = None
+        if self.discord_bot and loop and loop.is_running() and hasattr(self.discord_bot, "create_ai_telemetry_session"):
+            t_session = self.discord_bot.create_ai_telemetry_session(sub_name, target["title"])
+            if t_session:
+                def on_step(status: str, detail: str, is_final: bool = False, success: bool = True, output_preview: str = ""):
+                    if loop and loop.is_running():
+                        asyncio.run_coroutine_threadsafe(
+                            t_session.update(status, detail, is_final, success, output_preview),
+                            loop
+                        )
+                telemetry_cb = on_step
+
         comment_text = self.ai.generate_comment(
             prompt=user_prompt,
             system_prompt=system_prompt,
             enforce_lowercase=self.settings.get("engagement", {}).get("natural_lowercase_start", True),
-            max_sentences=self.settings.get("engagement", {}).get("max_sentences", 2)
+            max_sentences=self.settings.get("engagement", {}).get("max_sentences", 2),
+            telemetry_cb=telemetry_cb
         )
 
         if not comment_text:
             print(f"  [{username}] AI failed to generate comment. Skipping turn.")
-            return False
+            return False, "AI failed to generate a comment."
 
         print(f"  Crafted Comment ({cat_name}): \"{comment_text}\"")
 
@@ -151,7 +171,7 @@ class AutonomousOperator:
         if err or not comment_id:
             print(f"  Failed to post: {err}")
             self._sync_dispatch(self.discord_bot.log_error(f"Post Failure /u/{username}", str(err)))
-            return False
+            return False, f"Failed to post to Reddit: {err}"
 
         if self.settings.get("engagement", {}).get("auto_upvote_parent_post", True):
             session.upvote(target["id"])
@@ -182,7 +202,7 @@ class AutonomousOperator:
         )
 
         print(f"  Comment successfully posted by /u/{username}! [https://reddit.com/comments/{target['id']}/-/{comment_id}]")
-        return True
+        return True, f"Comment posted to r/{sub_name} by /u/{username}!"
 
     def run_forever(self):
         self.running = True
