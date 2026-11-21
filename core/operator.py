@@ -43,6 +43,7 @@ class AutonomousOperator:
         self.subreddits_cfg = settings.get("subreddits", {})
         self.running = False
         self.paused = False
+        self._cooldown_alerted: Dict[str, float] = {}
         self.loop: Optional[asyncio.AbstractEventLoop] = None
         self.next_cycle_at: float = time.time() + random.uniform(self.min_delay, self.max_delay)
 
@@ -60,7 +61,9 @@ class AutonomousOperator:
         if not self.sleep_cfg.get("enabled", True):
             return False
 
-        now = datetime.now()
+        # Apply local timezone offset (defaulting to +5.5 for IST)
+        tz_offset = timedelta(hours=self.sleep_cfg.get("timezone_offset_hours", 5.5))
+        now = datetime.utcnow() + tz_offset
         start_m = self.sleep_cfg.get("start_hour", 0) * 60 + self.sleep_cfg.get("start_minute", 30)
         end_m = self.sleep_cfg.get("end_hour", 8) * 60 + self.sleep_cfg.get("end_minute", 30)
         current_m = now.hour * 60 + now.minute
@@ -97,8 +100,13 @@ class AutonomousOperator:
         if session.is_on_cooldown():
             rem = session.get_remaining_cooldown()
             print(f"  [{username}] On cooldown ({rem}s remaining). Skipping turn.")
-            self._sync_dispatch(self.discord_bot.log_ratelimit(username, rem))
+            last_alert = self._cooldown_alerted.get(username, 0)
+            if time.time() - last_alert > 600:
+                self._cooldown_alerted[username] = time.time()
+                self._sync_dispatch(self.discord_bot.log_ratelimit(username, rem))
             return False, f"On Reddit cooldown ({rem}s remaining)."
+        else:
+            self._cooldown_alerted.pop(username, None)
 
         all_subs = []
         for cat_subs in self.subreddits_cfg.values():
@@ -239,6 +247,8 @@ class AutonomousOperator:
                     if len(accounts) > 1:
                         time.sleep(random.uniform(120, 240))
 
+                # Schedule the next full cycle with jitter delay (45 - 115 minutes)
+                self.next_cycle_at = time.time() + random.uniform(self.min_delay, self.max_delay)
                 next_time = datetime.fromtimestamp(self.next_cycle_at).strftime("%H:%M:%S")
                 rem_mins = int(max(0, self.next_cycle_at - time.time()) // 60)
                 print(f"\n  Cycle complete. Next run scheduled at {next_time} (~{rem_mins} minutes)...")
