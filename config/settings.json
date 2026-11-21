@@ -1,0 +1,85 @@
+{
+  "project": "KarmaForge",
+  "version": "1.0.0",
+  "pacing": {
+    "min_delay_minutes": 45,
+    "max_delay_minutes": 115,
+    "daily_comment_limit_per_account": 6,
+    "circadian_sleep": {
+      "enabled": true,
+      "start_hour": 0,
+      "start_minute": 30,
+      "end_hour": 8,
+      "end_minute": 30
+    }
+  },
+  "qualification": {
+    "min_post_age_minutes": 15,
+    "max_post_age_minutes": 55,
+    "max_existing_comments": 25,
+    "min_upvotes": 2,
+    "feeds_to_scan": ["rising", "top_hour"],
+    "skip_serious_tag": true,
+    "blacklist_keywords": [
+      "politics", "election", "biden", "trump", "democrat", "republican",
+      "israel", "gaza", "palestine", "war", "suicide", "depression",
+      "funeral", "passed away", "rip", "nsfw"
+    ]
+  },
+  "subreddits": {
+    "massive_discussion": [
+      "AskReddit",
+      "NoStupidQuestions",
+      "CasualConversation",
+      "explainlikeimfive",
+      "tooafraidtoask",
+      "Advice"
+    ],
+    "viral_humor_relatable": [
+      "me_irl",
+      "mildlyinfuriating",
+      "Showerthoughts",
+      "funny",
+      "memes",
+      "facepalm",
+      "clevercomebacks",
+      "wholesomememes"
+    ],
+    "curiosity_and_facts": [
+      "todayilearned",
+      "Damnthatsinteresting",
+      "mildlyinteresting",
+      "interestingasfuck",
+      "LifeProTips"
+    ],
+    "gaming_and_entertainment": [
+      "gaming",
+      "pcmasterrace",
+      "pcgaming",
+      "movies",
+      "television",
+      "Steam"
+    ],
+    "tech_and_dev": [
+      "technology",
+      "gadgets",
+      "ProgrammerHumor",
+      "programming",
+      "webdev",
+      "buildapc"
+    ]
+  },
+  "downvote_shield": {
+    "auto_delete_enabled": true,
+    "delete_threshold": -2,
+    "alert_threshold": -1,
+    "check_interval_seconds": 300,
+    "monitor_window_hours": 36
+  },
+  "engagement": {
+    "auto_upvote_parent_post": true,
+    "natural_lowercase_start": true,
+    "max_sentences": 2,
+    "max_characters": 280
+  }
+}

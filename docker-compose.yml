@@ -1,0 +1,12 @@
+services:
+  karmaforge:
+    build: .
+    container_name: karmaforge
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      - ./data:/app/data
+    environment:
+      - PYTHONUNBUFFERED=1
+      - KARMAFORGE_DB_PATH=/app/data/karmaforge.db

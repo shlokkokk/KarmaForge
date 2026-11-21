@@ -1,0 +1,35 @@
+# Environment & Secrets (NEVER COMMIT)
+.env
+*.env
+.env.*
+!.env.example
+
+# SQLite Database & Storage
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+data/
+data/*
+
+# Logs & Scrapes
+logs/
+*.log
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+.venv/
+env/
+
+# IDE / System
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Scratch / Temp
+scratch/
+tmp/
