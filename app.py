@@ -64,16 +64,20 @@ def run_reddit_diagnostic() -> str:
     except Exception as e:
         results.append(f"\n**Test 2 Error**: `{e}`")
 
-    # 4. Test Python requests directly
-    try:
-        import requests
-        s = requests.Session()
-        s.headers.update({"User-Agent": ua})
-        s.cookies.set("reddit_session", c1, domain=".reddit.com")
-        resp = s.get("https://old.reddit.com/api/me.json", allow_redirects=False, timeout=10)
-        results.append(f"\n**Test 3: Python requests (old.reddit.com)**\n- Status: `{resp.status_code}`\n- Location: `{resp.headers.get('location')}`\n- Body preview: `{resp.text[:120]}`")
-    except Exception as e:
-        results.append(f"\n**Test 3 Error**: `{e}`")
+    # 4. Test OAuth & API Gateway endpoints on AWS
+    endpoints = [
+        "https://www.reddit.com/api/v1/access_token",
+        "https://oauth.reddit.com",
+        "https://gateway.reddit.com",
+        "https://gql.reddit.com"
+    ]
+    for ep in endpoints:
+        try:
+            r = subprocess.run(["curl", "-s", "-i", "-X", "POST", "-A", ua, ep], capture_output=True, text=True, timeout=5)
+            status_line = r.stdout.splitlines()[0] if r.stdout else "No output"
+            results.append(f"- **Endpoint `{ep}`**: `{status_line}`")
+        except Exception as e:
+            results.append(f"- **Endpoint `{ep}`**: Error `{e}`")
 
     return "\n".join(results)
 
