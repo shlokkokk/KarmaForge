@@ -71,7 +71,7 @@
   },
   "downvote_shield": {
     "auto_delete_enabled": true,
-    "delete_threshold": -2,
+    "delete_threshold": -1,
     "alert_threshold": -1,
     "check_interval_seconds": 300,
     "monitor_window_hours": 36

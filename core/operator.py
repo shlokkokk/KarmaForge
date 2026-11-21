@@ -244,7 +244,15 @@ class AutonomousOperator:
                 print(f"\n  Cycle complete. Next run scheduled at {next_time} (~{rem_mins} minutes)...")
 
                 while time.time() < self.next_cycle_at and self.running:
-                    time.sleep(min(15, max(1, int(self.next_cycle_at - time.time()))))
+                    # Run DownvoteShield watchdog every 2 minutes
+                    try:
+                        shield_stats = self.shield.run_check_cycle()
+                        if shield_stats.get("deleted", 0) > 0:
+                            print(f"  [Shield Watchdog] Automatically deleted {shield_stats['deleted']} negative comments.")
+                    except Exception as se:
+                        print(f"  [Shield Watchdog Error] {se}")
+                    
+                    time.sleep(min(120, max(1, int(self.next_cycle_at - time.time()))))
 
             except KeyboardInterrupt:
                 print("\nShutdown initiated.")

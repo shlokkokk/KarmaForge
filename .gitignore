@@ -11,6 +11,7 @@
 *.db-shm
 data/
 data/*
+!data/corpus_unified_summary.json
 
 # Logs & Scrapes
 logs/
