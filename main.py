@@ -160,9 +160,10 @@ def run_unified():
         operator.loop = loop
         operator.run_forever()
 
-    # Start lightweight health server for cloud platforms (e.g. Hugging Face Spaces port 7860)
-    health_thread = threading.Thread(target=start_health_server, daemon=True)
-    health_thread.start()
+    # Start lightweight health server only if requested (Gradio handles 7860 on Spaces)
+    if os.environ.get("ENABLE_HEALTH_SERVER", "0") == "1":
+        health_thread = threading.Thread(target=start_health_server, daemon=True)
+        health_thread.start()
 
     if token:
         print("[Launcher] Starting Discord Bot & Autonomous Operator...")

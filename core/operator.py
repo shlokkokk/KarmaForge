@@ -42,6 +42,7 @@ class AutonomousOperator:
         self.running = False
         self.paused = False
         self.loop: Optional[asyncio.AbstractEventLoop] = None
+        self.next_cycle_at: float = time.time() + random.uniform(self.min_delay, self.max_delay)
 
     def _sync_dispatch(self, coro):
         if self.discord_bot and self.loop and self.loop.is_running():
@@ -214,14 +215,12 @@ class AutonomousOperator:
                     if len(accounts) > 1:
                         time.sleep(random.uniform(120, 240))
 
-                sleep_secs = random.uniform(self.min_delay, self.max_delay)
-                next_time = datetime.fromtimestamp(time.time() + sleep_secs).strftime("%H:%M:%S")
-                print(f"\n  Cycle complete. Next wave hunt scheduled at {next_time} ({int(sleep_secs // 60)} minutes)...")
+                next_time = datetime.fromtimestamp(self.next_cycle_at).strftime("%H:%M:%S")
+                rem_mins = int(max(0, self.next_cycle_at - time.time()) // 60)
+                print(f"\n  Cycle complete. Next run scheduled at {next_time} (~{rem_mins} minutes)...")
 
-                slept = 0
-                while slept < sleep_secs and self.running:
-                    time.sleep(min(15, sleep_secs - slept))
-                    slept += 15
+                while time.time() < self.next_cycle_at and self.running:
+                    time.sleep(min(15, max(1, int(self.next_cycle_at - time.time()))))
 
             except KeyboardInterrupt:
                 print("\nShutdown initiated.")

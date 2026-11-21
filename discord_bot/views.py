@@ -142,13 +142,23 @@ class ControlPanelView(discord.ui.View):
         await interaction.response.defer(ephemeral=True)
         if hasattr(self.bot, "operator") and self.bot.operator:
             accounts = self.bot.reddit_manager.get_all_accounts()
-            if accounts:
-                session = accounts[0]
-                await interaction.followup.send(f"Finding a rising post for /u/{session.username}...", ephemeral=True)
-                success = self.bot.operator.execute_account_turn(session)
-                msg = "Comment posted successfully! Check the category channel." if success else "Ran scan. No good matching posts found in this pass, or account hit limit."
-                await interaction.followup.send(msg, ephemeral=True)
+            available = [a for a in accounts if not a.is_on_cooldown() and get_daily_comment_count(a.username) < 6]
+            if not available:
+                await interaction.followup.send("All accounts have either reached today's 6-comment limit or are cooling down.", ephemeral=True)
                 return
+
+            # Pick account with lowest daily comments
+            available.sort(key=lambda a: get_daily_comment_count(a.username))
+            session = available[0]
+
+            await interaction.followup.send(f"Scanning rising posts for /u/{session.username}...", ephemeral=True)
+            success = self.bot.operator.execute_account_turn(session)
+            if success:
+                msg = f"Comment posted by /u/{session.username}! Check the category channel."
+            else:
+                msg = "Scan finished. No rising posts met qualification criteria on this pass."
+            await interaction.followup.send(msg, ephemeral=True)
+            return
         await interaction.followup.send("Bot operator is starting up or paused.", ephemeral=True)
 
     @discord.ui.button(label="Check Downvotes", style=discord.ButtonStyle.secondary, custom_id="btn_shield", row=1)
