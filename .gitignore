@@ -33,3 +33,6 @@ Thumbs.db
 # Scratch / Temp
 scratch/
 tmp/
+scripts/check_*.py
+scripts/scan_*.py
+scripts/test_*.py
