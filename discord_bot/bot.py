@@ -13,7 +13,7 @@ from discord import app_commands
 from discord.ext import commands
 
 from discord_bot.channels import ChannelRouter
-from discord_bot.views import DeleteCommentView, ControlPanelView
+from discord_bot.views import DeleteCommentView, ControlPanelView, CommentActionView
 from core.db import (
     get_daily_comment_count,
     get_recent_comments,
@@ -168,43 +168,47 @@ class KarmaForgeBot(commands.Bot):
             embed.add_field(name="Result", value=f"{'Target Selected' if qualified else 'Skipped (' + reason + ')'}", inline=True)
             await chan.send(embed=embed)
 
-    async def log_activity(self, username: str, subreddit: str, post_title: str, comment_text: str, post_url: str, persona: str):
+    async def log_activity(self, username: str, subreddit: str, post_title: str, comment_text: str, post_url: str, persona: str, comment_id: Optional[str] = None):
         chan = self.router.get_channel("activity")
         if chan:
-            embed = discord.Embed(title=f"New Comment Posted by /u/{username}", color=0xE67E22)
-            embed.add_field(name="Subreddit", value=f"r/{subreddit}", inline=True)
-            embed.add_field(name="Persona", value=persona, inline=True)
-            embed.add_field(name="Title", value=post_title[:250], inline=False)
-            embed.add_field(name="Comment", value=f"_{comment_text}_", inline=False)
-            embed.add_field(name="Link", value=f"[Open Discussion]({post_url})", inline=False)
-            await chan.send(embed=embed)
+            embed = discord.Embed(title=f"New Comment Posted by /u/{username}", color=0x3498DB)
+            embed.add_field(name="Account", value=f"**/u/{username}**", inline=True)
+            embed.add_field(name="Subreddit", value=f"**r/{subreddit}**", inline=True)
+            embed.add_field(name="Persona", value=f"`{persona}`", inline=True)
+            embed.add_field(name="Post Title", value=post_title[:250], inline=False)
+            embed.add_field(name="Comment Posted", value=f"> \"{comment_text}\"", inline=False)
+            view = CommentActionView(comment_url=post_url, comment_id=comment_id, account_username=username, reddit_manager=self.reddit_manager)
+            await chan.send(embed=embed, view=view)
 
     async def log_upvote(self, username: str, post_title: str, post_url: str):
         chan = self.router.get_channel("upvotes")
         if chan:
             embed = discord.Embed(title=f"Parent Thread Upvoted by /u/{username}", color=0xE67E22)
-            embed.add_field(name="Thread", value=f"[{post_title[:200]}]({post_url})", inline=False)
-            await chan.send(embed=embed)
+            embed.add_field(name="Account", value=f"**/u/{username}**", inline=True)
+            embed.add_field(name="Thread Title", value=post_title[:200], inline=False)
+            view = CommentActionView(comment_url=post_url)
+            await chan.send(embed=embed, view=view)
 
     # Category 3: Karma & Analytics Event Dispatchers
     async def log_milestone(self, username: str, comment_text: str, score: int, post_url: str):
         chan = self.router.get_channel("milestones")
         if chan:
             embed = discord.Embed(title=f"Karma Milestone: +{score} Upvotes", color=0x2ECC71)
-            embed.add_field(name="Account", value=f"/u/{username}", inline=True)
-            embed.add_field(name="Score", value=f"+{score} points", inline=True)
-            embed.add_field(name="Comment", value=f"_{comment_text[:250]}_", inline=False)
-            embed.add_field(name="Link", value=f"[Open on Reddit]({post_url})", inline=False)
-            await chan.send(embed=embed)
+            embed.add_field(name="Account", value=f"**/u/{username}**", inline=True)
+            embed.add_field(name="Score", value=f"**+{score} points**", inline=True)
+            embed.add_field(name="Comment Text", value=f"> \"{comment_text[:250]}\"", inline=False)
+            view = CommentActionView(comment_url=post_url)
+            await chan.send(embed=embed, view=view)
 
     # Category 4: Downvote Shield & Defense Event Dispatchers
     async def log_shield_warning(self, username: str, comment_id: str, score: int, comment_text: str, post_url: str):
         chan = self.router.get_channel("shield")
         if chan:
-            embed = discord.Embed(title=f"Downvote Alert: {score} pts (/u/{username})", description="Negative score warning. Action required or comment will auto-delete at -2.", color=0xF39C12)
-            embed.add_field(name="Comment Text", value=f"_{comment_text[:200]}_", inline=False)
-            embed.add_field(name="Link", value=f"[View Thread]({post_url})", inline=False)
-            view = DeleteCommentView(comment_id=comment_id, account_username=username, reddit_manager=self.reddit_manager)
+            embed = discord.Embed(title=f"Downvote Warning: {score} pts (/u/{username})", description="Negative score detected. Action required or comment will auto-delete at -2.", color=0xF39C12)
+            embed.add_field(name="Account", value=f"**/u/{username}**", inline=True)
+            embed.add_field(name="Score", value=f"**{score} pts**", inline=True)
+            embed.add_field(name="Comment Text", value=f"> \"{comment_text[:200]}\"", inline=False)
+            view = CommentActionView(comment_url=post_url, comment_id=comment_id, account_username=username, reddit_manager=self.reddit_manager)
             await chan.send(embed=embed, view=view)
 
     async def log_auto_deletion(self, username: str, comment_id: str, score: int, comment_text: str, post_url: str):

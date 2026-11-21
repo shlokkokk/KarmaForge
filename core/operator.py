@@ -168,14 +168,16 @@ class AutonomousOperator:
             persona_used=cat_name
         )
 
+        comment_direct_url = f"https://reddit.com/comments/{target['id']}/-/{comment_id}"
         self._sync_dispatch(
             self.discord_bot.log_activity(
                 username=username,
                 subreddit=sub_name,
                 post_title=target["title"],
                 comment_text=comment_text,
-                post_url=target["url"],
-                persona=cat_name
+                post_url=comment_direct_url,
+                persona=cat_name,
+                comment_id=comment_id
             )
         )
 

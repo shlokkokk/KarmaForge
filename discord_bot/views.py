@@ -16,6 +16,49 @@ from core.db import (
     get_active_comments
 )
 
+class DeleteCommentButton(discord.ui.Button):
+    """Emergency deletion button attached to comment embeds."""
+
+    def __init__(self, comment_id: str, account_username: str, reddit_manager: Any = None):
+        super().__init__(label="Delete Comment", style=discord.ButtonStyle.danger, custom_id=f"del_{comment_id[:30]}")
+        self.comment_id = comment_id
+        self.account_username = account_username
+        self.reddit_manager = reddit_manager
+
+    async def callback(self, interaction: discord.Interaction):
+        await interaction.response.defer(ephemeral=False)
+        if not self.reddit_manager:
+            from core.reddit_client import RedditClientManager
+            self.reddit_manager = RedditClientManager()
+
+        session = self.reddit_manager.get_account(self.account_username)
+        if not session:
+            await interaction.followup.send(f"Account session for /u/{self.account_username} not found.", ephemeral=True)
+            return
+
+        success, msg = session.delete_comment_by_id(self.comment_id)
+        if success:
+            update_comment_score(self.comment_id, score=-99, deleted=True)
+            self.disabled = True
+            self.label = "Deleted from Reddit"
+            self.style = discord.ButtonStyle.secondary
+            await interaction.message.edit(view=self.view)
+            await interaction.followup.send(f"Comment by /u/{self.account_username} was successfully deleted from Reddit.")
+        else:
+            await interaction.followup.send(f"Failed to delete comment: {msg}", ephemeral=True)
+
+
+class CommentActionView(discord.ui.View):
+    """Renders a direct clickable 'Open on Reddit' button and an optional Delete button."""
+
+    def __init__(self, comment_url: str, comment_id: Optional[str] = None, account_username: Optional[str] = None, reddit_manager: Any = None):
+        super().__init__(timeout=None)
+        if comment_url:
+            self.add_item(discord.ui.Button(label="Open on Reddit", url=comment_url, style=discord.ButtonStyle.link))
+        if comment_id and account_username:
+            self.add_item(DeleteCommentButton(comment_id=comment_id, account_username=account_username, reddit_manager=reddit_manager))
+
+
 class DeleteCommentView(discord.ui.View):
     """Button allowing one-click deletion of downvoted comments."""
 
