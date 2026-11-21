@@ -194,7 +194,7 @@ class AIGateway:
             headers={"Content-Type": "application/json"},
             method="POST"
         )
-        with urllib.request.urlopen(req, timeout=14.0) as resp:
+        with urllib.request.urlopen(req, timeout=7.0) as resp:
             res_json = json.loads(resp.read().decode("utf-8"))
             candidates = res_json.get("candidates", [])
             if candidates:
@@ -229,7 +229,7 @@ class AIGateway:
             },
             method="POST"
         )
-        with urllib.request.urlopen(req, timeout=12.0) as resp:
+        with urllib.request.urlopen(req, timeout=6.0) as resp:
             res_json = json.loads(resp.read().decode("utf-8"))
             choices = res_json.get("choices", [])
             if choices:
@@ -271,8 +271,13 @@ class AIGateway:
                 if e.code in (429, 403, 401):
                     self.gemini_pool.mark_rate_limited(key)
                     continue
+                elif e.code in (500, 502, 503, 504):
+                    print(f"  [AI Gateway] Peak Google traffic ({e.code} on {label}). Fast-failing to next tier...")
+                    continue
                 else:
                     print(f"  [AI Gateway] Gemini error ({label}): {e.code} {e.reason}")
+            except (TimeoutError, urllib.error.URLError) as e:
+                print(f"  [AI Gateway] Timeout / network glitch ({label}). Fast-failing to next tier...")
             except Exception as e:
                 print(f"  [AI Gateway] Gemini request failed ({label}): {e}")
 
