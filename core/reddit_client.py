@@ -236,22 +236,27 @@ class RedditSessionCookieClient:
             return False, f"Delete failed: {e}"
 
     def batch_get_comments(self, comment_ids: List[str]) -> List[Dict[str, Any]]:
-        """Fetches comment score inspection via info.json."""
+        """Fetches comment score inspection via user comments listing."""
         if not comment_ids:
             return []
-        fullnames = ",".join([f"t1_{cid}" if not cid.startswith("t1_") else cid for cid in comment_ids])
-        url = f"{get_reddit_base_url()}/api/info.json?id={fullnames}"
+        url = f"{get_reddit_base_url()}/user/{self.username}/comments.json?limit=50"
         try:
             status, stdout = curl_request(url, method="GET", session_cookie=self.session_cookie)
+            if not stdout:
+                return []
             data = json.loads(stdout)
             results = []
+            id_set = set(comment_ids)
             for child in data.get("data", {}).get("children", []):
                 cdata = child.get("data", {})
-                results.append({
-                    "id": cdata.get("id"),
-                    "score": cdata.get("score", 1),
-                    "author": cdata.get("author")
-                })
+                cid = cdata.get("id")
+                clean_cid = cid.replace("t1_", "") if cid else ""
+                if cid in id_set or clean_cid in id_set or f"t1_{clean_cid}" in id_set:
+                    results.append({
+                        "id": clean_cid or cid,
+                        "score": cdata.get("score", 1),
+                        "author": cdata.get("author")
+                    })
             return results
         except Exception as e:
             print(f"  [Session Client] Batch inspect error: {e}")
