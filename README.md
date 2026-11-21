@@ -1,3 +1,12 @@
+---
+title: KarmaForge
+colorFrom: red
+colorTo: gray
+sdk: gradio
+app_file: app.py
+pinned: false
+---
+
 # KarmaForge
 
 KarmaForge is an autonomous organic Reddit engagement engine engineered to build authentic comment karma across aged Reddit accounts without triggering spam heuristics, bot detectors, or community downvotes.
