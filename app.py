@@ -10,19 +10,17 @@ import threading
 import time
 from typing import List, Dict, Any
 
-try:
-    import gradio as gr
-except ImportError:
-    gr = None
+import gradio as gr
+import spaces
+
+@spaces.GPU
+def init_gpu():
+    return "ZeroGPU initialized"
 
 try:
-    import spaces
-    @spaces.GPU
-    def zero_gpu_anchor():
-        return "ZeroGPU active"
-except Exception:
-    def zero_gpu_anchor():
-        return "CPU fallback"
+    init_gpu()
+except Exception as e:
+    print(f"ZeroGPU init note: {e}")
 
 from main import run_unified
 from core.reddit_client import RedditClientManager
@@ -80,7 +78,7 @@ if gr:
 
         # ZeroGPU registration anchor
         gpu_btn = gr.Button("ZeroGPU Healthcheck", visible=False)
-        gpu_btn.click(fn=zero_gpu_anchor, outputs=[])
+        gpu_btn.click(fn=init_gpu, outputs=[])
 
     if __name__ == "__main__":
         demo.launch(server_name="0.0.0.0", server_port=7860)
