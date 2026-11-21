@@ -146,31 +146,29 @@ class AIGateway:
 
     def build_quality_ladder(self) -> List[Tuple[str, str, str]]:
         """
-        CurioCut-Style Quality-First Tiered Matrix across Multi-Key Pool:
-        Prioritizes top models across ALL keys before dropping to lite or older fallbacks.
+        Verified Multi-Key Quality Ladder:
+        Routes across models verified to return 200 OK and generate peak human humor.
         """
         ladder = []
         keys = self.gemini_pool.keys
         if not keys:
             return ladder
 
-        # Tier 1: Peak Quality & Reasoning across all keys
+        # Tier 1: Peak Nuance & Sharp Cynical Wit (gemini-3.1-flash-lite)
+        for idx, key in enumerate(keys, 1):
+            ladder.append((key, "gemini-3.1-flash-lite", f"Key {idx} [3.1 Flash Lite]"))
+
+        # Tier 2: Fast & High-Context Human Tone (gemini-flash-latest)
         for idx, key in enumerate(keys, 1):
             ladder.append((key, "gemini-flash-latest", f"Key {idx} [Flash Latest]"))
-        for idx, key in enumerate(keys, 1):
-            ladder.append((key, "gemini-pro-latest", f"Key {idx} [Pro Reasoning]"))
 
-        # Tier 2: Ultra-Fast High-Throughput Tiers across all keys
+        # Tier 3: High-Throughput Observational Humor (gemini-flash-lite-latest)
         for idx, key in enumerate(keys, 1):
             ladder.append((key, "gemini-flash-lite-latest", f"Key {idx} [Flash Lite]"))
-        for idx, key in enumerate(keys, 1):
-            ladder.append((key, "gemini-2.5-flash", f"Key {idx} [2.5 Flash]"))
 
-        # Tier 3: Secondary Version Fallbacks
+        # Tier 4: Deep Pro Reasoning (when free-tier RPM allows)
         for idx, key in enumerate(keys, 1):
-            ladder.append((key, "gemini-2.0-flash", f"Key {idx} [2.0 Flash]"))
-        for idx, key in enumerate(keys, 1):
-            ladder.append((key, "gemini-1.5-flash", f"Key {idx} [1.5 Flash]"))
+            ladder.append((key, "gemini-3.1-pro-preview", f"Key {idx} [3.1 Pro Preview]"))
 
         return ladder
 
