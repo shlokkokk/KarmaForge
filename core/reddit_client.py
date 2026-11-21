@@ -18,6 +18,9 @@ USER_AGENT_BROWSER = (
     "Chrome/131.0.0.0 Safari/537.36"
 )
 
+def get_reddit_base_url() -> str:
+    return os.environ.get("REDDIT_PROXY_URL", "").strip().rstrip("/") or "https://old.reddit.com"
+
 def curl_request(
     url: str,
     method: str = "GET",
@@ -27,6 +30,7 @@ def curl_request(
 ) -> Tuple[int, str]:
     """Executes an HTTP request via system curl to preserve modern TLS/HTTP2 fingerprints."""
     curl_bin = "curl.exe" if os.name == "nt" else "curl"
+    base_url = get_reddit_base_url()
     cmd = [
         curl_bin, "-s", "-L", "--compressed",
         "-A", USER_AGENT_BROWSER,
@@ -46,8 +50,8 @@ def curl_request(
         cmd.extend(["-X", "POST"])
         if modhash:
             cmd.extend(["-H", f"X-Modhash: {modhash}"])
-        cmd.extend(["-H", "Origin: https://old.reddit.com"])
-        cmd.extend(["-H", "Referer: https://old.reddit.com/"])
+        cmd.extend(["-H", f"Origin: {base_url}"])
+        cmd.extend(["-H", f"Referer: {base_url}/"])
         if data:
             for k, v in data.items():
                 cmd.extend(["-d", f"{k}={v}"])
@@ -80,7 +84,7 @@ class RedditSessionCookieClient:
 
     def verify_auth(self) -> Tuple[bool, str, Dict[str, int]]:
         """Validates the session cookie against /api/me.json and grabs modhash + karma."""
-        url = "https://old.reddit.com/api/me.json"
+        url = f"{get_reddit_base_url()}/api/me.json"
         try:
             status, stdout = curl_request(url, method="GET", session_cookie=self.session_cookie)
             if not stdout:
@@ -110,10 +114,11 @@ class RedditSessionCookieClient:
 
     def fetch_feed(self, subreddit: str, feed: str = "rising", limit: int = 25) -> List[Dict[str, Any]]:
         """Pulls posts directly from Reddit JSON feed."""
+        base_url = get_reddit_base_url()
         if feed == "top_hour":
-            url = f"https://old.reddit.com/r/{subreddit}/top.json?t=hour&limit={limit}"
+            url = f"{base_url}/r/{subreddit}/top.json?t=hour&limit={limit}"
         else:
-            url = f"https://old.reddit.com/r/{subreddit}/rising.json?limit={limit}"
+            url = f"{base_url}/r/{subreddit}/rising.json?limit={limit}"
 
         try:
             status, stdout = curl_request(url, method="GET", session_cookie=self.session_cookie)
@@ -151,7 +156,7 @@ class RedditSessionCookieClient:
         if not self.modhash:
             self.verify_auth()
 
-        url = "https://old.reddit.com/api/comment"
+        url = f"{get_reddit_base_url()}/api/comment"
         thing_id = f"t3_{post_id}" if not post_id.startswith("t3_") else post_id
         
         payload = {
@@ -193,7 +198,7 @@ class RedditSessionCookieClient:
         if not self.modhash:
             self.verify_auth()
 
-        url = "https://old.reddit.com/api/vote"
+        url = f"{get_reddit_base_url()}/api/vote"
         full_id = f"t3_{thing_id}" if not thing_id.startswith("t") else thing_id
         payload = {"id": full_id, "dir": "1", "uh": self.modhash or ""}
 
@@ -214,7 +219,7 @@ class RedditSessionCookieClient:
         if not self.modhash:
             self.verify_auth()
 
-        url = "https://old.reddit.com/api/del"
+        url = f"{get_reddit_base_url()}/api/del"
         full_id = f"t1_{comment_id}" if not comment_id.startswith("t1_") else comment_id
         payload = {"id": full_id, "uh": self.modhash or ""}
 
@@ -235,7 +240,7 @@ class RedditSessionCookieClient:
         if not comment_ids:
             return []
         fullnames = ",".join([f"t1_{cid}" if not cid.startswith("t1_") else cid for cid in comment_ids])
-        url = f"https://old.reddit.com/api/info.json?id={fullnames}"
+        url = f"{get_reddit_base_url()}/api/info.json?id={fullnames}"
         try:
             status, stdout = curl_request(url, method="GET", session_cookie=self.session_cookie)
             data = json.loads(stdout)
