@@ -71,9 +71,13 @@
   },
   "downvote_shield": {
     "auto_delete_enabled": true,
-    "delete_threshold": -1,
-    "alert_threshold": -1,
-    "check_interval_seconds": 300,
+    "hard_delete_threshold": -3,
+    "soft_delete_threshold": -1,
+    "grace_period_minutes": 15,
+    "discussion_buffer_replies": 1,
+    "vault_minimum_score": 3,
+    "high_water_mark_immunity": 10,
+    "check_interval_seconds": 180,
     "monitor_window_hours": 36
   },
   "engagement": {

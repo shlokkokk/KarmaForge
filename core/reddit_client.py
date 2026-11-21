@@ -255,12 +255,40 @@ class RedditSessionCookieClient:
                     results.append({
                         "id": clean_cid or cid,
                         "score": cdata.get("score", 1),
-                        "author": cdata.get("author")
+                        "author": cdata.get("author"),
+                        "created_utc": cdata.get("created_utc"),
+                        "permalink": cdata.get("permalink", ""),
+                        "subreddit": cdata.get("subreddit", "")
                     })
             return results
         except Exception as e:
             print(f"  [Session Client] Batch inspect error: {e}")
             return []
+
+    def get_comment_replies_count(self, permalink: str) -> int:
+        """Fetches thread slice to count direct child replies for an at-risk comment."""
+        if not permalink:
+            return 0
+        clean_link = permalink.rstrip("/")
+        url = f"{get_reddit_base_url()}{clean_link}.json?limit=10"
+        try:
+            status, stdout = curl_request(url, method="GET", session_cookie=self.session_cookie)
+            if not stdout:
+                return 0
+            data = json.loads(stdout)
+            if isinstance(data, list) and len(data) > 1:
+                comments_listing = data[1].get("data", {}).get("children", [])
+                if comments_listing:
+                    top_comment = comments_listing[0].get("data", {})
+                    replies_data = top_comment.get("replies")
+                    if isinstance(replies_data, dict):
+                        children = replies_data.get("data", {}).get("children", [])
+                        valid_replies = [c for c in children if c.get("kind") == "t1"]
+                        return len(valid_replies)
+            return 0
+        except Exception as e:
+            print(f"  [Session Client] Reply count fetch error: {e}")
+            return 0
 
 
 class RedditClientManager:

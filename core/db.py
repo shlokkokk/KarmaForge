@@ -45,6 +45,10 @@ def init_db():
                 persona_used TEXT,
                 posted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 score INTEGER DEFAULT 1,
+                peak_score INTEGER DEFAULT 1,
+                score_history TEXT DEFAULT '[]',
+                replies_count INTEGER DEFAULT 0,
+                status TEXT DEFAULT 'HEALTHY',
                 deleted INTEGER DEFAULT 0,
                 last_checked_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
@@ -67,6 +71,18 @@ def init_db():
             CREATE INDEX IF NOT EXISTS idx_comments_check 
             ON comments_posted (deleted, posted_at);
         """)
+
+        # Backward compatibility migration for older DBs
+        cursor = conn.execute("PRAGMA table_info(comments_posted);")
+        columns = [row["name"] for row in cursor.fetchall()]
+        if "peak_score" not in columns:
+            conn.execute("ALTER TABLE comments_posted ADD COLUMN peak_score INTEGER DEFAULT 1;")
+        if "score_history" not in columns:
+            conn.execute("ALTER TABLE comments_posted ADD COLUMN score_history TEXT DEFAULT '[]';")
+        if "replies_count" not in columns:
+            conn.execute("ALTER TABLE comments_posted ADD COLUMN replies_count INTEGER DEFAULT 0;")
+        if "status" not in columns:
+            conn.execute("ALTER TABLE comments_posted ADD COLUMN status TEXT DEFAULT 'HEALTHY';")
 
 def has_post_been_targeted(post_id: str) -> bool:
     """Check if ANY account has already targeted or commented on this post."""
@@ -133,15 +149,36 @@ def get_active_comments(window_hours: int = 36) -> List[Dict[str, Any]]:
         ).fetchall()
         return [dict(r) for r in rows]
 
-def update_comment_score(comment_id: str, score: int, deleted: bool = False):
-    """Update live score and deletion state for a monitored comment."""
+def update_comment_score(
+    comment_id: str,
+    score: int,
+    deleted: bool = False,
+    peak_score: Optional[int] = None,
+    score_history: Optional[str] = None,
+    replies_count: Optional[int] = None,
+    status: Optional[str] = None
+):
+    """Update live score, peak score, trajectory, and deletion state for a monitored comment."""
     with get_connection() as conn:
-        conn.execute(
-            """UPDATE comments_posted 
-               SET score = ?, deleted = ?, last_checked_at = CURRENT_TIMESTAMP
-               WHERE comment_id = ?""",
-            (score, 1 if deleted else 0, comment_id)
-        )
+        updates = ["score = ?", "deleted = ?", "last_checked_at = CURRENT_TIMESTAMP"]
+        params: List[Any] = [score, 1 if deleted else 0]
+
+        if peak_score is not None:
+            updates.append("peak_score = MAX(COALESCE(peak_score, 1), ?)")
+            params.append(peak_score)
+        if score_history is not None:
+            updates.append("score_history = ?")
+            params.append(score_history)
+        if replies_count is not None:
+            updates.append("replies_count = ?")
+            params.append(replies_count)
+        if status is not None:
+            updates.append("status = ?")
+            params.append(status)
+
+        params.append(comment_id)
+        sql = f"UPDATE comments_posted SET {', '.join(updates)} WHERE comment_id = ?"
+        conn.execute(sql, tuple(params))
 
 def get_recent_comments(account_username: Optional[str] = None, limit: int = 10) -> List[Dict[str, Any]]:
     """Fetch recent comments for CLI status or Discord commands."""
