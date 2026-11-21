@@ -4,6 +4,8 @@ Uses curl-backed engine to cleanly bypass Reddit's Fastly TLS 403 firewall.
 Authenticates via Browser Session Cookie (reddit_session).
 """
 
+from __future__ import annotations
+
 import os
 import json
 import time

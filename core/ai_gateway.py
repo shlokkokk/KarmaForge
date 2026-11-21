@@ -4,6 +4,8 @@ Combines Mika's Keypool Rotation with CurioCut's Multi-Model Quality Ladder
 and a strict anti-AI output sanitizer.
 """
 
+from __future__ import annotations
+
 import os
 import json
 import time

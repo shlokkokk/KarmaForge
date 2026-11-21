@@ -4,12 +4,14 @@ Main orchestrator handling multi-account rotation, circadian rest,
 humanized pacing jitter, and category-level Discord telemetry.
 """
 
+from __future__ import annotations
+
 import os
 import time
 import random
 import asyncio
 from datetime import datetime
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Tuple, Callable
 
 from core.db import (
     get_daily_comment_count,

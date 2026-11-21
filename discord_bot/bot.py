@@ -3,6 +3,8 @@ KarmaForge Discord Bot
 Mission Control router dispatching events to their respective dedicated categories.
 """
 
+from __future__ import annotations
+
 import os
 import sys
 import asyncio

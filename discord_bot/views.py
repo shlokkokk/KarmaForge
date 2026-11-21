@@ -3,6 +3,8 @@ KarmaForge Discord Views
 Interactive UI components for Control Panel and comment deletion.
 """
 
+from __future__ import annotations
+
 import time
 import random
 import asyncio
