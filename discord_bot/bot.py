@@ -36,6 +36,7 @@ class KarmaForgeBot(commands.Bot):
 
     async def setup_hook(self):
         self.add_view(ControlPanelView(bot=self))
+        self.tree.add_command(app_commands.Command(name="panel", description="Post or refresh the live Control Panel", callback=self.cmd_panel))
         self.tree.add_command(app_commands.Command(name="karma", description="View live Reddit karma breakdown", callback=self.cmd_karma))
         self.tree.add_command(app_commands.Command(name="recent", description="List recent wave-riding comments", callback=self.cmd_recent))
         self.tree.add_command(app_commands.Command(name="status", description="Inspect KarmaForge engine and quota status", callback=self.cmd_status))
@@ -76,6 +77,30 @@ class KarmaForgeBot(commands.Bot):
                     inline=False
                 )
                 await panel_chan.send(embed=embed, view=ControlPanelView(bot=self))
+
+    async def cmd_panel(self, interaction: discord.Interaction):
+        await interaction.response.defer(ephemeral=True)
+        embed = discord.Embed(
+            title="Reddit Bot Control Panel",
+            description=(
+                "**Action Row**:\n"
+                "- `Post: Jake` - Drops comment on /u/jakee-peraltaa\n"
+                "- `Post: Jamie` - Drops comment on /u/jamieee_e\n"
+                "- `Post: Both Accounts` - Drops Jake now, waits 2m, drops Jamie\n\n"
+                "Click any button below to trigger posts or inspect account stats."
+            ),
+            color=0x2B2D31
+        )
+        panel_chan = self.router.get_channel("panel")
+        if panel_chan:
+            try:
+                await panel_chan.purge(limit=5)
+            except Exception:
+                pass
+            await panel_chan.send(embed=embed, view=ControlPanelView(bot=self))
+            await interaction.followup.send("Control Panel refreshed in #control-panel!", ephemeral=True)
+        else:
+            await interaction.followup.send(embed=embed, view=ControlPanelView(bot=self), ephemeral=False)
 
     async def cmd_karma(self, interaction: discord.Interaction):
         await interaction.response.defer()
