@@ -61,12 +61,12 @@ class Hunter:
         return True, "Qualified"
 
     def scan_subreddit(self, session: Any, subreddit_name: str, limit: int = 25) -> List[Dict[str, Any]]:
-        """Scans a subreddit's rising and top-hour feeds for top candidate opportunities."""
+        """Scans a subreddit's top-hour feed for top candidate opportunities."""
         candidates = []
 
         try:
-            # 1. Scan Rising feed
-            raw_posts = session.fetch_feed(subreddit_name, feed="rising", limit=limit)
+            # 1. Scan Top Hour (reliable JSON feed containing all recent 1-hour rising posts)
+            raw_posts = session.fetch_feed(subreddit_name, feed="top_hour", limit=limit)
             for post in raw_posts:
                 ok, reason = self.is_qualified(post)
                 if ok:
@@ -83,28 +83,6 @@ class Hunter:
                         "momentum": round(momentum, 3),
                         "url": f"https://reddit.com{post.get('permalink', '')}"
                     })
-
-            # 2. Supplement with Top Hour if rising has few candidates
-            if len(candidates) < 2:
-                raw_top = session.fetch_feed(subreddit_name, feed="top_hour", limit=limit)
-                for post in raw_top:
-                    if any(c["id"] == post["id"] for c in candidates):
-                        continue
-                    ok, reason = self.is_qualified(post)
-                    if ok:
-                        age_m = max(1.0, (time.time() - post["created_utc"]) / 60.0)
-                        momentum = post["score"] / age_m
-                        candidates.append({
-                            "id": post["id"],
-                            "title": post["title"],
-                            "selftext": post.get("selftext", ""),
-                            "subreddit": subreddit_name,
-                            "score": post["score"],
-                            "num_comments": post["num_comments"],
-                            "age_minutes": round(age_m, 1),
-                            "momentum": round(momentum, 3),
-                            "url": f"https://reddit.com{post.get('permalink', '')}"
-                        })
 
         except Exception as e:
             print(f"  [Hunter] Error scanning r/{subreddit_name}: {e}")
