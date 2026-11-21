@@ -12,7 +12,7 @@ import re
 import urllib.request
 import urllib.parse
 import urllib.error
-from typing import Optional, List, Dict, Tuple
+from typing import Optional, List, Dict, Tuple, Any, Callable
 
 class KeyPool:
     """Mika-style Keypool for managing API keys with cooldowns on rate-limits."""
