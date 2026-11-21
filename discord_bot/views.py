@@ -1,8 +1,10 @@
 """
 KarmaForge Discord Views
-Interactive UI components for Control Panel and Downvote Shield.
+Interactive UI components for Control Panel and comment deletion.
 """
 
+import time
+from datetime import datetime
 from typing import Any, Optional
 import discord
 from core.db import (
@@ -47,24 +49,37 @@ class DeleteCommentView(discord.ui.View):
 
 
 class ControlPanelView(discord.ui.View):
-    """Persistent interactive Control Panel for mission control."""
+    """Simple, clean Control Panel with practical, normal buttons."""
 
     def __init__(self, bot: Any):
         super().__init__(timeout=None)
         self.bot = bot
 
-    @discord.ui.button(label="Live Karma", style=discord.ButtonStyle.primary, custom_id="btn_karma", row=0)
+    # ==========================================
+    # ROW 0: ACCOUNT & COMMENT STATS
+    # ==========================================
+
+    @discord.ui.button(label="Check Karma", style=discord.ButtonStyle.primary, custom_id="btn_karma", row=0)
     async def btn_karma(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.defer(ephemeral=True)
         manager = self.bot.reddit_manager
-        embed = discord.Embed(title="Live Karma Breakdown", color=0x3498DB)
+        if not manager:
+            from core.reddit_client import RedditClientManager
+            manager = RedditClientManager()
+            self.bot.reddit_manager = manager
+
+        embed = discord.Embed(title="Account Karma Breakdown", color=0x3498DB)
         for session in manager.get_all_accounts():
             ok, msg, karma = session.verify_auth()
             today_count = get_daily_comment_count(session.username)
-            status_text = "Active" if ok else "Session Expired"
+            status_text = "Working" if ok else f"Login Failed ({msg})"
             embed.add_field(
-                name=f"/u/{session.username} ({status_text})",
-                value=f"Comment Karma: `{karma.get('comment_karma', 0)}`\nPost Karma: `{karma.get('link_karma', 0)}`\nToday's Comments: `{today_count}/6`",
+                name=f"/u/{session.username} [{status_text}]",
+                value=(
+                    f"Comment Karma: **{karma.get('comment_karma', 0)}**\n"
+                    f"Post Karma: **{karma.get('link_karma', 0)}**\n"
+                    f"Comments Posted Today: `{today_count}/6`"
+                ),
                 inline=False
             )
         await interaction.followup.send(embed=embed, ephemeral=True)
@@ -72,46 +87,145 @@ class ControlPanelView(discord.ui.View):
     @discord.ui.button(label="Recent Comments", style=discord.ButtonStyle.secondary, custom_id="btn_recent", row=0)
     async def btn_recent(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.defer(ephemeral=True)
-        recent = get_recent_comments(limit=5)
+        recent = get_recent_comments(limit=6)
         if not recent:
             await interaction.followup.send("No comments posted yet.", ephemeral=True)
             return
 
-        embed = discord.Embed(title="Last 5 Comments", color=0x95A5A6)
+        embed = discord.Embed(title="Last Comments Posted", color=0x2B2D31)
         for r in recent:
-            val = f"Subreddit: r/{r['subreddit']} | Score: {r['score']} pts\n_{r['comment_text'][:120]}..._\n[Link]({r['post_url']})"
+            val = (
+                f"Subreddit: `r/{r['subreddit']}` | Score: **{r['score']} pts**\n"
+                f"> \"{r['comment_text'][:120]}\"\n"
+                f"[Link to Post]({r['post_url']})"
+            )
             embed.add_field(name=f"/u/{r['account_username']} • {r['posted_at']}", value=val, inline=False)
         await interaction.followup.send(embed=embed, ephemeral=True)
 
-    @discord.ui.button(label="Run Shield Scan", style=discord.ButtonStyle.secondary, custom_id="btn_shield", row=0)
+    @discord.ui.button(label="Daily Limit", style=discord.ButtonStyle.secondary, custom_id="btn_quota", row=0)
+    async def btn_quota(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.defer(ephemeral=True)
+        manager = self.bot.reddit_manager
+        accounts = manager.get_all_accounts() if manager else []
+        embed = discord.Embed(title="Daily Comments (6 per account max)", color=0x1ABC9C)
+        for acc in accounts:
+            c = get_daily_comment_count(acc.username)
+            rem = max(0, 6 - c)
+            embed.add_field(
+                name=f"/u/{acc.username}",
+                value=f"Posted: `{c}/6` | Left: `{rem}`",
+                inline=False
+            )
+        await interaction.followup.send(embed=embed, ephemeral=True)
+
+    @discord.ui.button(label="Account Health", style=discord.ButtonStyle.secondary, custom_id="btn_health", row=0)
+    async def btn_health(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.defer(ephemeral=True)
+        manager = self.bot.reddit_manager
+        accounts = manager.get_all_accounts() if manager else []
+        embed = discord.Embed(title="Reddit Login Check", color=0x9B59B6)
+        for acc in accounts:
+            ok, msg, karma = acc.verify_auth()
+            embed.add_field(
+                name=f"/u/{acc.username}",
+                value=f"Login Status: `{'Valid' if ok else 'Expired'}`\nDetails: {msg}",
+                inline=False
+            )
+        await interaction.followup.send(embed=embed, ephemeral=True)
+
+    # ==========================================
+    # ROW 1: ACTIONS & CONTROLS
+    # ==========================================
+
+    @discord.ui.button(label="Post Comment Now", style=discord.ButtonStyle.success, custom_id="btn_hunt", row=1)
+    async def btn_hunt(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.defer(ephemeral=True)
+        if hasattr(self.bot, "operator") and self.bot.operator:
+            accounts = self.bot.reddit_manager.get_all_accounts()
+            if accounts:
+                session = accounts[0]
+                await interaction.followup.send(f"Finding a rising post for /u/{session.username}...", ephemeral=True)
+                success = self.bot.operator.execute_account_turn(session)
+                msg = "Comment posted successfully! Check the category channel." if success else "Ran scan. No good matching posts found in this pass, or account hit limit."
+                await interaction.followup.send(msg, ephemeral=True)
+                return
+        await interaction.followup.send("Bot operator is starting up or paused.", ephemeral=True)
+
+    @discord.ui.button(label="Check Downvotes", style=discord.ButtonStyle.secondary, custom_id="btn_shield", row=1)
     async def btn_shield(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.defer(ephemeral=True)
-        if hasattr(self.bot, "shield"):
+        if hasattr(self.bot, "shield") and self.bot.shield:
             stats = self.bot.shield.run_check_cycle()
-            await interaction.followup.send(f"Shield Scan: Checked {stats['checked']} comments. Deletions: {stats['deleted']}, Milestones: {stats['milestones']}.", ephemeral=True)
+            await interaction.followup.send(
+                f"Downvote Check Done:\n- Checked: `{stats['checked']}` comments\n- Auto-Deleted (score <= -2): `{stats['deleted']}`\n- Good comments (+10+ pts): `{stats['milestones']}`",
+                ephemeral=True
+            )
         else:
-            await interaction.followup.send("Shield scan dispatched.", ephemeral=True)
+            await interaction.followup.send("Downvote checker is initializing.", ephemeral=True)
 
     @discord.ui.button(label="Pause / Resume", style=discord.ButtonStyle.danger, custom_id="btn_toggle", row=1)
     async def btn_toggle(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.defer(ephemeral=True)
-        if hasattr(self.bot, "operator"):
+        if hasattr(self.bot, "operator") and self.bot.operator:
             self.bot.operator.paused = not getattr(self.bot.operator, "paused", False)
-            state = "Paused" if self.bot.operator.paused else "Resumed"
-            await interaction.followup.send(f"Engine is now: **{state}**.", ephemeral=True)
+            state = "PAUSED" if self.bot.operator.paused else "RUNNING"
+            await interaction.followup.send(f"Bot is now: **{state}**.", ephemeral=True)
         else:
-            await interaction.followup.send("Operator instance not attached.", ephemeral=True)
+            await interaction.followup.send("Operator not attached.", ephemeral=True)
 
-    @discord.ui.button(label="Trigger Wave Hunt", style=discord.ButtonStyle.success, custom_id="btn_hunt", row=1)
-    async def btn_hunt(self, interaction: discord.Interaction, button: discord.ui.Button):
+    @discord.ui.button(label="Next Run Timer", style=discord.ButtonStyle.secondary, custom_id="btn_timer", row=1)
+    async def btn_timer(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.defer(ephemeral=True)
-        if hasattr(self.bot, "operator"):
-            accounts = self.bot.reddit_manager.get_all_accounts()
-            if accounts:
-                session = accounts[0]
-                await interaction.followup.send(f"Triggering hunt turn for /u/{session.username}...", ephemeral=True)
-                success = self.bot.operator.execute_account_turn(session)
-                msg = "Turn completed successfully." if success else "Turn finished without posting (no eligible thread or limit reached)."
-                await interaction.followup.send(msg, ephemeral=True)
-                return
-        await interaction.followup.send("Operator not ready.", ephemeral=True)
+        if hasattr(self.bot, "operator") and self.bot.operator:
+            is_sleep = self.bot.operator.is_in_circadian_rest()
+            p = "PAUSED" if self.bot.operator.paused else "RUNNING"
+            msg = (
+                f"**Bot State**: `{p}`\n"
+                f"**Night Sleep (00:30-08:30)**: `{'Sleeping now' if is_sleep else 'Active hours'}`\n"
+                f"**Interval**: `45 to 115 minutes between posts`"
+            )
+            await interaction.followup.send(msg, ephemeral=True)
+        else:
+            await interaction.followup.send("Operator not attached.", ephemeral=True)
+
+    # ==========================================
+    # ROW 2: TESTS & UTILITIES
+    # ==========================================
+
+    @discord.ui.button(label="Test AI Reply", style=discord.ButtonStyle.secondary, custom_id="btn_test_ai", row=2)
+    async def btn_test_ai(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.defer(ephemeral=True)
+        from core.ai_gateway import AIGateway
+        from core.persona_engine import PersonaEngine
+
+        gw = AIGateway()
+        cat, prompt = PersonaEngine.get_persona_for_subreddit("AskReddit")
+        test_comment = gw.generate_comment(
+            PersonaEngine.build_comment_prompt("What is an unspoken rule of life?", "", "AskReddit"),
+            prompt
+        )
+        await interaction.followup.send(f"Test Reply Generated:\n> \"{test_comment}\"", ephemeral=True)
+
+    @discord.ui.button(label="Refresh Panel", style=discord.ButtonStyle.primary, custom_id="btn_refresh_panel", row=2)
+    async def btn_refresh_panel(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.defer(ephemeral=True)
+        manager = self.bot.reddit_manager
+        acc_text = []
+        if manager:
+            for acc in manager.get_all_accounts():
+                today_count = get_daily_comment_count(acc.username)
+                acc_text.append(f"- **/u/{acc.username}**: `{today_count}/6` comments today")
+
+        is_paused = getattr(self.bot.operator, "paused", False) if hasattr(self.bot, "operator") and self.bot.operator else False
+        embed = discord.Embed(
+            title="Reddit Bot Control Panel",
+            description=(
+                f"**Status**: `{'PAUSED' if is_paused else 'RUNNING'}`\n"
+                f"**Updated**: <t:{int(time.time())}:R>\n\n"
+                f"**Accounts**:\n" + ("\n".join(acc_text) if acc_text else "None") + "\n\n"
+                "Click any button below to check stats or control the bot."
+            ),
+            color=0x2B2D31
+        )
+        await interaction.message.edit(embed=embed, view=self)
+        await interaction.followup.send("Panel refreshed.", ephemeral=True)

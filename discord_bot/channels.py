@@ -84,7 +84,7 @@ KarmaForge enforces strict programmatic negative constraints so that every comme
 4. **Zero Corporate Fluff**: Strictly bans corporate praise (*"Great post!", "Keep up the great work!"*).
 5. **Subreddit Tone Matching**:
    - Dev & Tech (`r/programming`, `r/webdev`): Pragmatic, slightly cynical, architectural edge cases.
-   - Hardware & Audio (`r/headphones`, `r/buildapc`): Build quality, clamp force, real-world buyer checks.
+   - Gaming & Entertainment (`r/gaming`, `r/pcmasterrace`, `r/movies`): Realistic quirks, understatement, backlog humor.
    - Casual Discussion (`r/AskReddit`, `r/NoStupidQuestions`): Deadpan observational wit.
    - Memes & Irony (`r/me_irl`, `r/mildlyinfuriating`): Understated sarcasm.
 """

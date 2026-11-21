@@ -63,13 +63,16 @@ class KarmaForgeBot(commands.Bot):
                     pass
 
                 embed = discord.Embed(
-                    title="KarmaForge Live Control Panel",
-                    description="Real-time control dashboard for autonomous Reddit operations.",
+                    title="Reddit Bot Control Panel",
+                    description=(
+                        "Click any button below to check account karma, view recent comments, "
+                        "post immediately, or pause the bot."
+                    ),
                     color=0x2B2D31
                 )
                 embed.add_field(
-                    name="Commands",
-                    value="`/karma` - View karma\n`/recent` - View last 5 comments\n`/status` - Check quota & pacing\n`/pause` - Pause hunting\n`/resume` - Resume hunting",
+                    name="Slash Commands",
+                    value="`/karma` - View karma\n`/recent` - View last 5 comments\n`/status` - Check limits & timer\n`/pause` - Pause bot\n`/resume` - Resume bot",
                     inline=False
                 )
                 await panel_chan.send(embed=embed, view=ControlPanelView(bot=self))
