@@ -15,6 +15,15 @@ try:
 except ImportError:
     gr = None
 
+try:
+    import spaces
+    @spaces.GPU
+    def zero_gpu_anchor():
+        return "ZeroGPU active"
+except Exception:
+    def zero_gpu_anchor():
+        return "CPU fallback"
+
 from main import run_unified
 from core.reddit_client import RedditClientManager
 from core.db import get_recent_comments, get_daily_comment_count
@@ -68,6 +77,10 @@ if gr:
         status_display = gr.Markdown(value=get_status_markdown)
         refresh_btn = gr.Button("Refresh Telemetry")
         refresh_btn.click(fn=get_status_markdown, outputs=status_display)
+
+        # ZeroGPU registration anchor
+        gpu_btn = gr.Button("ZeroGPU Healthcheck", visible=False)
+        gpu_btn.click(fn=zero_gpu_anchor, outputs=[])
 
     if __name__ == "__main__":
         demo.launch(server_name="0.0.0.0", server_port=7860)
