@@ -28,6 +28,9 @@ class KeyPool:
             return None
         return random.choice(available)
 
+    def is_cooling_down(self, key: str) -> bool:
+        return self.cooldowns.get(key, 0) > time.time()
+
     def mark_rate_limited(self, key: str, custom_cooldown: Optional[int] = None):
         cooldown = custom_cooldown or self.cooldown_seconds
         self.cooldowns[key] = time.time() + cooldown
@@ -137,8 +140,39 @@ class AIGateway:
 
         self.groq_models = [
             "qwen/qwen3.8-27b",
+            "openai/gpt-oss-120b",
             "openai/gpt-oss-20b"
         ]
+
+    def build_quality_ladder(self) -> List[Tuple[str, str, str]]:
+        """
+        CurioCut-Style Quality-First Tiered Matrix across Multi-Key Pool:
+        Prioritizes top models across ALL keys before dropping to lite or older fallbacks.
+        """
+        ladder = []
+        keys = self.gemini_pool.keys
+        if not keys:
+            return ladder
+
+        # Tier 1: Peak Quality & Reasoning across all keys
+        for idx, key in enumerate(keys, 1):
+            ladder.append((key, "gemini-flash-latest", f"Key {idx} [Flash Latest]"))
+        for idx, key in enumerate(keys, 1):
+            ladder.append((key, "gemini-pro-latest", f"Key {idx} [Pro Reasoning]"))
+
+        # Tier 2: Ultra-Fast High-Throughput Tiers across all keys
+        for idx, key in enumerate(keys, 1):
+            ladder.append((key, "gemini-flash-lite-latest", f"Key {idx} [Flash Lite]"))
+        for idx, key in enumerate(keys, 1):
+            ladder.append((key, "gemini-2.5-flash", f"Key {idx} [2.5 Flash]"))
+
+        # Tier 3: Secondary Version Fallbacks
+        for idx, key in enumerate(keys, 1):
+            ladder.append((key, "gemini-2.0-flash", f"Key {idx} [2.0 Flash]"))
+        for idx, key in enumerate(keys, 1):
+            ladder.append((key, "gemini-1.5-flash", f"Key {idx} [1.5 Flash]"))
+
+        return ladder
 
     def _call_gemini_direct(self, prompt: str, system_prompt: str, key: str, model: str) -> str:
         """Native REST request to Google Gemini API."""
@@ -216,34 +250,35 @@ class AIGateway:
         max_sentences: int = 2
     ) -> Optional[str]:
         """
-        Executes Keypool + Multi-Model cascade:
-        1. Loops through available Gemini keys across models.
-        2. If rate-limited, rotates key or drops to Groq LPU.
-        3. Sanitizes output with OutputSanitizer.
+        Executes CurioCut-Style Quality Ladder + Groq LPU Failover:
+        1. Evaluates priority ladder across all active keys and models.
+        2. Skips keys currently cooling down from rate limits.
+        3. If all Gemini tiers are exhausted, drops to Groq LPU backup brain.
+        4. Programmatically sanitizes output to guarantee zero AI artifacts.
         """
         raw_output = None
+        ladder = self.build_quality_ladder()
 
-        # Tier 1: Gemini Keypool Rotation
-        if self.gemini_pool.has_keys():
-            for model in self.gemini_models:
-                key = self.gemini_pool.get_available_key()
-                if not key:
-                    print("  [AI Gateway] All Gemini keys in pool are currently on cooldown.")
+        # Tier 1-3: Gemini Multi-Key Multi-Model Quality Ladder
+        for key, model, label in ladder:
+            if self.gemini_pool.is_cooling_down(key):
+                continue
+
+            try:
+                raw_output = self._call_gemini_direct(prompt, system_prompt, key, model)
+                if raw_output and len(raw_output) > 6:
+                    print(f"  [AI Gateway] Successfully generated with {label}.")
                     break
-                try:
-                    raw_output = self._call_gemini_direct(prompt, system_prompt, key, model)
-                    if raw_output and len(raw_output) > 6:
-                        break
-                except urllib.error.HTTPError as e:
-                    if e.code in (429, 403, 401):
-                        self.gemini_pool.mark_rate_limited(key)
-                        continue
-                    else:
-                        print(f"  [AI Gateway] Gemini error ({model}): {e.code} {e.reason}")
-                except Exception as e:
-                    print(f"  [AI Gateway] Gemini request failed ({model}): {e}")
+            except urllib.error.HTTPError as e:
+                if e.code in (429, 403, 401):
+                    self.gemini_pool.mark_rate_limited(key)
+                    continue
+                else:
+                    print(f"  [AI Gateway] Gemini error ({label}): {e.code} {e.reason}")
+            except Exception as e:
+                print(f"  [AI Gateway] Gemini request failed ({label}): {e}")
 
-        # Tier 2: Groq LPU Failover
+        # Tier 4: Groq LPU Failover
         if not raw_output and self.groq_key:
             print("  [AI Gateway] Activating Groq LPU backup brain...")
             for model in self.groq_models:
