@@ -8,7 +8,7 @@
     "circadian_sleep": {
       "enabled": true,
       "timezone_offset_hours": 5.5,
-      "start_hour": 0,
+      "start_hour": 1,
       "start_minute": 30,
       "end_hour": 8,
       "end_minute": 30
