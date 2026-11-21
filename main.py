@@ -126,6 +126,22 @@ def run_dry_run():
     print("\n" + "=" * 65)
     print("Dry run completed.")
 
+def start_health_server(port: int = 7860):
+    from http.server import HTTPServer, BaseHTTPRequestHandler
+    class HealthHandler(BaseHTTPRequestHandler):
+        def do_GET(self):
+            self.send_response(200)
+            self.send_header("Content-Type", "text/plain")
+            self.end_headers()
+            self.wfile.write(b"KarmaForge Autonomous Engine: ACTIVE\n")
+        def log_message(self, format, *args):
+            return
+    try:
+        server = HTTPServer(("0.0.0.0", port), HealthHandler)
+        server.serve_forever()
+    except Exception as e:
+        print(f"[Health Server] Could not bind to port {port}: {e}")
+
 def run_unified():
     """Runs Discord Bot and Autonomous Operator simultaneously."""
     settings = load_settings()
@@ -143,6 +159,10 @@ def run_unified():
     def start_operator_thread(loop):
         operator.loop = loop
         operator.run_forever()
+
+    # Start lightweight health server for cloud platforms (e.g. Hugging Face Spaces port 7860)
+    health_thread = threading.Thread(target=start_health_server, daemon=True)
+    health_thread.start()
 
     if token:
         print("[Launcher] Starting Discord Bot & Autonomous Operator...")

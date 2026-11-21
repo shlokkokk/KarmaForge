@@ -20,5 +20,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy codebase
 COPY . .
 
+# Expose Hugging Face default health port
+EXPOSE 7860
+
 # Run the autonomous engine
 CMD ["python", "main.py", "--run"]
