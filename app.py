@@ -117,6 +117,7 @@ def get_status_markdown() -> str:
         return f"Error loading status: {e}"
 
 # Start KarmaForge autonomous engine in background thread
+print(run_reddit_diagnostic())
 engine_thread = threading.Thread(target=run_unified, daemon=True)
 engine_thread.start()
 
