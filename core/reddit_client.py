@@ -7,6 +7,7 @@ Authenticates via Browser Session Cookie (reddit_session).
 from __future__ import annotations
 
 import os
+import re
 import json
 import time
 import subprocess
@@ -183,7 +184,39 @@ class RedditSessionCookieClient:
                 err_code = errors[0][0] if errors[0] else "UNKNOWN"
                 err_msg = errors[0][1] if len(errors[0]) > 1 else ""
                 if "RATELIMIT" in err_code:
-                    self.cooldown_until = time.time() + 600
+                    wait_seconds = 600
+                    match = re.search(r"(\d+)\s*(second|minute)", err_msg, re.IGNORECASE)
+                    if match:
+                        val = int(match.group(1))
+                        unit = match.group(2).lower()
+                        wait_seconds = val if "second" in unit else val * 60
+
+                    # Auto-retry once if cooldown is reasonable (up to 5 minutes / 300s)
+                    if wait_seconds <= 300:
+                        retry_wait = wait_seconds + 30
+                        print(f"  [{self.username}] Rate-limited for {wait_seconds}s. Auto-waiting {retry_wait}s (+30s buffer) to retry...")
+                        time.sleep(retry_wait)
+                        status_retry, stdout_retry = curl_request(
+                            url,
+                            method="POST",
+                            data=payload,
+                            session_cookie=self.session_cookie,
+                            modhash=self.modhash,
+                            proxy_url=self.proxy_url
+                        )
+                        try:
+                            res_retry = json.loads(stdout_retry)
+                            errors_retry = res_retry.get("json", {}).get("errors", [])
+                            if not errors_retry:
+                                things_retry = res_retry.get("json", {}).get("data", {}).get("things", [])
+                                if things_retry:
+                                    new_cid = things_retry[0].get("data", {}).get("id", "")
+                                    return new_cid.replace("t1_", ""), None
+                                return "posted_ok", None
+                        except Exception:
+                            pass
+
+                    self.cooldown_until = time.time() + wait_seconds + 30
                     return None, f"Rate-limited: {err_msg}"
                 return None, f"Reddit error: {err_code} - {err_msg}"
 

@@ -111,6 +111,11 @@ class AutonomousOperator:
         all_subs = []
         for cat_subs in self.subreddits_cfg.values():
             all_subs.extend(cat_subs)
+
+        # Protect fragile accounts (comment karma <= 5) from high-friction subreddits
+        if getattr(session, "comment_karma", 1) <= 5:
+            all_subs = [s for s in all_subs if s.lower() not in ["advice"]]
+
         random.shuffle(all_subs)
 
         candidates = []
@@ -180,7 +185,11 @@ class AutonomousOperator:
         comment_id, err = session.reply_to_submission(target["id"], comment_text)
         if err or not comment_id:
             print(f"  Failed to post: {err}")
-            self._sync_dispatch(self.discord_bot.log_error(f"Post Failure /u/{username}", str(err)))
+            if "Rate-limited" in str(err):
+                rem = session.get_remaining_cooldown() or 60
+                self._sync_dispatch(self.discord_bot.log_ratelimit(username, rem))
+            else:
+                self._sync_dispatch(self.discord_bot.log_error(f"Post Failure /u/{username}", str(err)))
             return False, f"Failed to post to Reddit: {err}"
 
         if self.settings.get("engagement", {}).get("auto_upvote_parent_post", True):
