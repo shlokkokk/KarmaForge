@@ -26,11 +26,12 @@ def curl_request(
     method: str = "GET",
     data: Optional[Dict[str, str]] = None,
     session_cookie: Optional[str] = None,
-    modhash: Optional[str] = None
+    modhash: Optional[str] = None,
+    proxy_url: Optional[str] = None
 ) -> Tuple[int, str]:
     """Executes an HTTP request via system curl to preserve modern TLS/HTTP2 fingerprints."""
     curl_bin = "curl.exe" if os.name == "nt" else "curl"
-    base_url = get_reddit_base_url()
+    base_url = (proxy_url or get_reddit_base_url()).strip().rstrip("/")
     cmd = [
         curl_bin, "-s", "-L", "--compressed",
         "-A", USER_AGENT_BROWSER,
@@ -68,9 +69,10 @@ def curl_request(
 class RedditSessionCookieClient:
     """Authenticates directly via browser session cookie (reddit_session)."""
 
-    def __init__(self, username: str, session_cookie: str):
+    def __init__(self, username: str, session_cookie: str, proxy_url: Optional[str] = None):
         self.username = username
         self.session_cookie = session_cookie.strip()
+        self.proxy_url = (proxy_url or get_reddit_base_url()).strip().rstrip("/")
         self.modhash: Optional[str] = None
         self.cooldown_until: float = 0.0
         self.comment_karma: int = 0
@@ -84,9 +86,9 @@ class RedditSessionCookieClient:
 
     def verify_auth(self) -> Tuple[bool, str, Dict[str, int]]:
         """Validates the session cookie against /api/me.json and grabs modhash + karma."""
-        url = f"{get_reddit_base_url()}/api/me.json"
+        url = f"{self.proxy_url}/api/me.json"
         try:
-            status, stdout = curl_request(url, method="GET", session_cookie=self.session_cookie)
+            status, stdout = curl_request(url, method="GET", session_cookie=self.session_cookie, proxy_url=self.proxy_url)
             if not stdout:
                 return False, "Empty response from Reddit.", {}
 
@@ -114,14 +116,14 @@ class RedditSessionCookieClient:
 
     def fetch_feed(self, subreddit: str, feed: str = "rising", limit: int = 25) -> List[Dict[str, Any]]:
         """Pulls posts directly from Reddit JSON feed."""
-        base_url = get_reddit_base_url()
+        base_url = self.proxy_url
         if feed == "top_hour":
             url = f"{base_url}/r/{subreddit}/top.json?t=hour&limit={limit}"
         else:
             url = f"{base_url}/r/{subreddit}/rising.json?limit={limit}"
 
         try:
-            status, stdout = curl_request(url, method="GET", session_cookie=self.session_cookie)
+            status, stdout = curl_request(url, method="GET", session_cookie=self.session_cookie, proxy_url=self.proxy_url)
             if not stdout:
                 return []
 
@@ -156,7 +158,7 @@ class RedditSessionCookieClient:
         if not self.modhash:
             self.verify_auth()
 
-        url = f"{get_reddit_base_url()}/api/comment"
+        url = f"{self.proxy_url}/api/comment"
         thing_id = f"t3_{post_id}" if not post_id.startswith("t3_") else post_id
         
         payload = {
@@ -172,7 +174,8 @@ class RedditSessionCookieClient:
                 method="POST",
                 data=payload,
                 session_cookie=self.session_cookie,
-                modhash=self.modhash
+                modhash=self.modhash,
+                proxy_url=self.proxy_url
             )
             res = json.loads(stdout)
             errors = res.get("json", {}).get("errors", [])
@@ -198,7 +201,7 @@ class RedditSessionCookieClient:
         if not self.modhash:
             self.verify_auth()
 
-        url = f"{get_reddit_base_url()}/api/vote"
+        url = f"{self.proxy_url}/api/vote"
         full_id = f"t3_{thing_id}" if not thing_id.startswith("t") else thing_id
         payload = {"id": full_id, "dir": "1", "uh": self.modhash or ""}
 
@@ -208,7 +211,8 @@ class RedditSessionCookieClient:
                 method="POST",
                 data=payload,
                 session_cookie=self.session_cookie,
-                modhash=self.modhash
+                modhash=self.modhash,
+                proxy_url=self.proxy_url
             )
             return True
         except Exception:
@@ -219,7 +223,7 @@ class RedditSessionCookieClient:
         if not self.modhash:
             self.verify_auth()
 
-        url = f"{get_reddit_base_url()}/api/del"
+        url = f"{self.proxy_url}/api/del"
         full_id = f"t1_{comment_id}" if not comment_id.startswith("t1_") else comment_id
         payload = {"id": full_id, "uh": self.modhash or ""}
 
@@ -229,7 +233,8 @@ class RedditSessionCookieClient:
                 method="POST",
                 data=payload,
                 session_cookie=self.session_cookie,
-                modhash=self.modhash
+                modhash=self.modhash,
+                proxy_url=self.proxy_url
             )
             return True, "Comment deleted."
         except Exception as e:
@@ -239,9 +244,9 @@ class RedditSessionCookieClient:
         """Fetches comment score inspection via user comments listing."""
         if not comment_ids:
             return []
-        url = f"{get_reddit_base_url()}/user/{self.username}/comments.json?limit=50"
+        url = f"{self.proxy_url}/user/{self.username}/comments.json?limit=50"
         try:
-            status, stdout = curl_request(url, method="GET", session_cookie=self.session_cookie)
+            status, stdout = curl_request(url, method="GET", session_cookie=self.session_cookie, proxy_url=self.proxy_url)
             if not stdout:
                 return []
             data = json.loads(stdout)
@@ -270,9 +275,9 @@ class RedditSessionCookieClient:
         if not permalink:
             return 0
         clean_link = permalink.rstrip("/")
-        url = f"{get_reddit_base_url()}{clean_link}.json?limit=10"
+        url = f"{self.proxy_url}{clean_link}.json?limit=10"
         try:
-            status, stdout = curl_request(url, method="GET", session_cookie=self.session_cookie)
+            status, stdout = curl_request(url, method="GET", session_cookie=self.session_cookie, proxy_url=self.proxy_url)
             if not stdout:
                 return 0
             data = json.loads(stdout)
@@ -308,7 +313,8 @@ class RedditClientManager:
             session_cookie = os.environ.get(f"REDDIT_ACCOUNT_{idx}_SESSION", "").strip()
 
             if username and session_cookie:
-                client = RedditSessionCookieClient(username, session_cookie)
+                proxy_url = os.environ.get(f"REDDIT_ACCOUNT_{idx}_PROXY_URL", "").strip() or None
+                client = RedditSessionCookieClient(username, session_cookie, proxy_url=proxy_url)
                 self.accounts[username] = client
 
     def get_account(self, username: str) -> Optional[Any]:

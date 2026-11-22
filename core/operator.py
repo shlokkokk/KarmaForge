@@ -245,7 +245,9 @@ class AutonomousOperator:
                     self.execute_account_turn(session)
 
                     if len(accounts) > 1:
-                        time.sleep(random.uniform(120, 240))
+                        inter_account_delay = random.uniform(300, 600)
+                        print(f"  [Operator] Waiting {inter_account_delay / 60:.1f} minutes before next account turn...")
+                        time.sleep(inter_account_delay)
 
                 # Schedule the next full cycle with jitter delay (45 - 115 minutes)
                 self.next_cycle_at = time.time() + random.uniform(self.min_delay, self.max_delay)
