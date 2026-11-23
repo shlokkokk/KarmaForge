@@ -213,6 +213,13 @@ class RedditSessionCookieClient:
                                     new_cid = things_retry[0].get("data", {}).get("id", "")
                                     return new_cid.replace("t1_", ""), None
                                 return "posted_ok", None
+                            else:
+                                err_msg = errors_retry[0][1] if len(errors_retry[0]) > 1 else err_msg
+                                match2 = re.search(r"(\d+)\s*(second|minute)", err_msg, re.IGNORECASE)
+                                if match2:
+                                    val2 = int(match2.group(1))
+                                    unit2 = match2.group(2).lower()
+                                    wait_seconds = val2 if "second" in unit2 else val2 * 60
                         except Exception:
                             pass
 

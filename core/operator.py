@@ -16,7 +16,8 @@ from typing import Dict, Any, List, Optional, Tuple, Callable
 from core.db import (
     get_daily_comment_count,
     record_comment,
-    record_karma
+    record_karma,
+    get_recent_comments
 )
 from core.hunter import Hunter
 from core.persona_engine import PersonaEngine
@@ -97,6 +98,21 @@ class AutonomousOperator:
             print(f"  [{username}] Daily quota reached ({daily_count}/{self.daily_limit}). Resting.")
             return False, f"Daily quota reached ({daily_count}/{self.daily_limit})."
 
+        # Check if account posted recently in the database to prevent reboot spam
+        recent = get_recent_comments(username, limit=1)
+        if recent and recent[0].get("posted_at"):
+            try:
+                posted_dt = datetime.strptime(recent[0]["posted_at"], "%Y-%m-%d %H:%M:%S")
+                elapsed_seconds = (datetime.now() - posted_dt).total_seconds()
+                min_spacing = 900  # 15 minutes minimum spacing between comments for an account
+                if elapsed_seconds < min_spacing:
+                    rem = int(min_spacing - elapsed_seconds)
+                    print(f"  [{username}] Posted recently ({int(elapsed_seconds/60)}m ago). Waiting {rem}s before next turn.")
+                    session.cooldown_until = max(session.cooldown_until, time.time() + rem)
+                    return False, f"Recent post cooldown ({rem}s remaining)."
+            except Exception:
+                pass
+
         if session.is_on_cooldown():
             rem = session.get_remaining_cooldown()
             print(f"  [{username}] On cooldown ({rem}s remaining). Skipping turn.")
@@ -137,6 +153,7 @@ class AutonomousOperator:
                 candidates.extend(found)
                 if len(candidates) >= 3:
                     break
+            time.sleep(random.uniform(1.5, 2.5))
 
         if not candidates:
             print(f"  [{username}] No qualifying rising threads found right now. Will scan on next cycle.")

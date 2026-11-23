@@ -2,9 +2,9 @@
   "project": "KarmaForge",
   "version": "1.0.0",
   "pacing": {
-    "min_delay_minutes": 45,
-    "max_delay_minutes": 115,
-    "daily_comment_limit_per_account": 6,
+    "min_delay_minutes": 65,
+    "max_delay_minutes": 140,
+    "daily_comment_limit_per_account": 8,
     "circadian_sleep": {
       "enabled": true,
       "timezone_offset_hours": 5.5,
